@@ -853,6 +853,22 @@ async function init() {
   $('#btnExport').onclick = exportToFolder;
   $('#btnSettings').onclick = () => { fillSettingsForm(); $('#settingsModal').classList.remove('hidden'); };
   $('#btnSaveSettings').onclick = saveSettingsForm;
+  $('#btnClearCache').onclick = async () => {
+    const ok = await confirmBox(
+      'Очистить кэш прогресса',
+      '<p>Удалить сохранённый кэш переводов (<code>progress.json</code> в AppData и в папке текущей сборки)?</p><p class="muted">Файлы, которые уже были применены в сборку, останутся на диске.</p>',
+      'Очистить'
+    );
+    if (!ok) return;
+    state.dirty.clear();
+    await api.clearProgress();
+    for (const f of state.files) {
+      for (const r of f.rows) r.translation = '';
+    }
+    renderSidebar();
+    renderRows();
+    toast('Кэш прогресса очищен', 'ok', 3000);
+  };
   $$('[data-close]').forEach((b) => (b.onclick = () => b.closest('.modal').classList.add('hidden')));
   $$('[data-preset]').forEach((b) => (b.onclick = () => {
     const p = PRESETS[b.dataset.preset];

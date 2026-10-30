@@ -207,6 +207,14 @@ ipcMain.on('progress:save-sync', (e, data) => {
   saveProgressToDisk(data);
   e.returnValue = true;
 });
+ipcMain.handle('progress:clear', () => {
+  try { fs.rmSync(progressFile(), { force: true }); } catch { /* ignore */ }
+  const s = getSettings();
+  if (s.lastInstance && fs.existsSync(s.lastInstance)) {
+    try { fs.rmSync(path.join(s.lastInstance, '.mctranslate', 'progress.json'), { force: true }); } catch { /* ignore */ }
+  }
+  return true;
+});
 
 function timestamp() {
   const d = new Date();
