@@ -169,12 +169,19 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 
 /* Sidebar */
 .sidebar {
-  width: 280px;
-  min-width: 240px;
+  width: 290px;
+  min-width: 250px;
   background: var(--bg2);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
+  transition: width .18s ease, min-width .18s ease;
+}
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  overflow: hidden;
 }
 .side-head {
   padding: 12px;
@@ -188,19 +195,20 @@ code { background: var(--bg3); padding: 1px 5px; border-radius: 4px; font-size: 
 .total-count { font-size: 12px; color: var(--muted); flex-shrink: 0; }
 
 .side-tabs {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 3px;
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 2px;
+  padding: 3px;
 }
 .side-tabs button {
+  flex: 1 1 auto;
   background: transparent;
   color: var(--muted);
   border: none;
-  padding: 5px 4px;
+  padding: 5px 6px;
   border-radius: 5px;
   font-size: 11px;
   font-weight: 500;

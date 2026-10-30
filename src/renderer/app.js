@@ -17,6 +17,14 @@ function fileTab(f) {
   if (f.type === 'ftb' || f.type === 'ftb-lang' || f.type === 'bq') return 'quests';
   return 'other';
 }
+function isServerFile(f) {
+  return f.type === 'ftb' || f.type === 'bq' || f.type === 'puffish' || f.type === 'dialogue-json';
+}
+function matchTab(f, tab) {
+  if (!tab || tab === 'all') return true;
+  if (tab === 'server') return isServerFile(f);
+  return fileTab(f) === tab;
+}
 const PRESETS = {
   deepseek: {
     llmBaseUrl: 'https://api.deepseek.com/v1',
@@ -323,8 +331,8 @@ function fileLabel(f) {
 function setTab(tab) {
   state.tab = tab || 'all';
   $$('#sideTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
-  if (state.current && state.tab !== 'all' && fileTab(state.current) !== state.tab) {
-    const firstInTab = state.files.find((f) => fileTab(f) === state.tab);
+  if (state.current && !matchTab(state.current, state.tab)) {
+    const firstInTab = state.files.find((f) => matchTab(f, state.tab));
     if (firstInTab) {
       state.current = firstInTab;
       state.page = 0;
@@ -332,6 +340,13 @@ function setTab(tab) {
     }
   }
   renderSidebar();
+}
+
+function toggleSidebar(forceState) {
+  const sb = $('#sidebar');
+  const collapsed = typeof forceState === 'boolean' ? forceState : !sb.classList.contains('collapsed');
+  sb.classList.toggle('collapsed', collapsed);
+  $('#btnToggleSidebar').textContent = collapsed ? '▶' : '◀';
 }
 
 function renderSidebar() {
@@ -347,7 +362,7 @@ function renderSidebar() {
     totalDone += st.done;
     total += st.total;
     if (fileTab(f) === 'dialogues') dlgRows += st.total;
-    if (state.tab !== 'all' && fileTab(f) !== state.tab) continue;
+    if (!matchTab(f, state.tab)) continue;
     if (q && !f.rel.toLowerCase().includes(q)) continue;
     const g = TYPE_GROUP[f.type] || 'Прочее';
     if (g !== lastGroup) {
@@ -608,7 +623,7 @@ async function runAuto() {
   const onlyTodo = $('#autoOnlyTodo').checked;
   let files;
   if (scope === 'all') files = state.files;
-  else if (scope === 'tab') files = state.tab === 'all' ? state.files : state.files.filter((f) => fileTab(f) === state.tab);
+  else if (scope === 'tab') files = state.files.filter((f) => matchTab(f, state.tab));
   else files = state.current ? [state.current] : [];
   const items = [];
   for (const f of files) for (const r of f.rows) if (!onlyTodo || !r.translation) items.push({ r, f });
@@ -847,10 +862,43 @@ async function init() {
     state.settings = await api.setSettings({ theme: next });
   };
 
+  $('#btnToggleSidebar').onclick = () => toggleSidebar();
   $('#btnOpenInstance').onclick = () => openInstance();
   $('#btnOpenFiles').onclick = () => openFiles();
   $('#btnApply').onclick = applyToPack;
   $('#btnExport').onclick = exportToFolder;
+  $('#btnServerModal').onclick = () => {
+    const srvFiles = state.files.filter((f) => isServerFile(f));
+    const cliFiles = state.files.filter((f) => !isServerFile(f));
+    const srvDone = srvFiles.reduce((a, f) => a + fileStats(f).done, 0);
+    const srvTot = srvFiles.reduce((a, f) => a + fileStats(f).total, 0);
+    const cliDone = cliFiles.reduce((a, f) => a + fileStats(f).done, 0);
+    const cliTot = cliFiles.reduce((a, f) => a + fileStats(f).total, 0);
+    $('#srvStatsServer').textContent = `Серверных файлов: ${srvFiles.length} (строк: ${srvDone} / ${srvTot})`;
+    $('#srvStatsClient').textContent = `Клиентских файлов: ${cliFiles.length} (строк: ${cliDone} / ${cliTot})`;
+    $('#serverModal').classList.remove('hidden');
+  };
+  $('#btnFilterServerTab').onclick = () => {
+    $('#serverModal').classList.add('hidden');
+    toggleSidebar(false);
+    setTab('server');
+  };
+  $('#btnBuildServerPack').onclick = async () => {
+    const jobs = buildJobs();
+    if (!jobs.length) return toast('Нет переведённых строк для сборки пакета.', 'warn');
+    const dir = await api.pickFolder('Выберите папку, куда сохранить пакет для Сервера и Игроков');
+    if (!dir) return;
+    await flushProgress();
+    const res = await api.writeServerPack({ jobs, targetDir: dir });
+    $('#serverModal').classList.add('hidden');
+    if (res.errors && res.errors.length) toast('Ошибки при сборке:\n' + res.errors.join('\n'), 'err', 9000);
+    toast(
+      `Пакет готов!\nСерверных файлов: ${res.serverCount}\nКлиентских файлов (MCTranslate_RU.zip): ${res.clientCount}${res.sha1 ? `\nSHA1: ${res.sha1}` : ''}`,
+      'ok',
+      9000
+    );
+    api.openPath(dir);
+  };
   $('#btnSettings').onclick = () => { fillSettingsForm(); $('#settingsModal').classList.remove('hidden'); };
   $('#btnSaveSettings').onclick = saveSettingsForm;
   $('#btnClearCache').onclick = async () => {
@@ -959,6 +1007,7 @@ async function init() {
 
   document.addEventListener('keydown', async (e) => {
     if (e.key === 's' && e.ctrlKey) { e.preventDefault(); await flushProgress(); saveSessionState(true); toast('Прогресс сохранён', 'ok', 1500); }
+    if (e.key === 'b' && e.ctrlKey) { e.preventDefault(); toggleSidebar(); }
     if (e.key === 'Escape') {
       if (!$('#confirmModal').classList.contains('hidden')) $('#confirmNo').click();
       $$('.modal').forEach((m) => m.classList.add('hidden'));

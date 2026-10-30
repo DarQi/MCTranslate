@@ -8,6 +8,7 @@
 </head>
 <body>
   <header class="topbar">
+    <button id="btnToggleSidebar" class="btn icon-btn" title="Свернуть / развернуть панель файлов (Ctrl+B)">◀</button>
     <div class="brand">MCTranslate</div>
     <button id="btnOpenInstance" class="btn primary">Открыть сборку</button>
     <button id="btnOpenFiles" class="btn">Файлы…</button>
@@ -29,12 +30,13 @@
 
     <button id="btnTheme" class="btn icon-btn" title="Переключить тему (Тёмная / Светлая)">☀</button>
     <button id="btnSettings" class="btn icon-btn" title="Настройки">⚙</button>
+    <button id="btnServerModal" class="btn" title="Перевод для сервера и сборка готового пакета для друзей">🌐 Сервер</button>
     <button id="btnExport" class="btn" title="Сохранить переведённые файлы в отдельную папку">Экспорт</button>
     <button id="btnApply" class="btn success">Применить</button>
   </header>
 
   <div class="layout">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <div class="side-head">
         <div class="side-meta">
           <span id="instanceName" class="instance-name">Сборка не открыта</span>
@@ -46,6 +48,7 @@
           <button type="button" data-tab="quests">Квесты</button>
           <button type="button" data-tab="dialogues">Диалоги <span id="dlgBadge" class="tab-badge hidden">0</span></button>
           <button type="button" data-tab="other">Таланты / Lang</button>
+          <button type="button" data-tab="server" title="Файлы, которые синхронизируются с сервера всем игрокам">🌐 Сервер</button>
         </div>
         <input id="fileSearch" class="input search-sm" placeholder="Фильтр файлов…" />
       </div>
@@ -255,6 +258,48 @@
         <button id="btnClearCache" class="btn" style="margin-right:auto;color:var(--red)" title="Удалить сохранённый кэш прогресса (progress.json)">🗑 Очистить кэш прогресса</button>
         <button class="btn" data-close>Отмена</button>
         <button id="btnSaveSettings" class="btn primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server Pack modal -->
+  <div id="serverModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><h3>🌐 Перевод серверных сборок (Сервер + Клиент)</h3><button class="btn ghost" data-close>✕</button></div>
+      <div class="modal-body">
+        <div class="auto-hint" style="margin-bottom:12px">
+          <b>Нужно ли переводить файлы на самом сервере? — Да, для квестов и талантов обязательно!</b><br/>
+          В Minecraft модпаках (включая <b>Prominence™ II</b>) часть текста хранится на сервере и при входе в мир <b>передаётся с сервера всем игрокам по сети</b>, перезаписывая их локальные файлы.
+        </div>
+
+        <div class="grid2" style="align-items:stretch;gap:12px">
+          <div class="param-card" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-weight:700;font-size:13px;color:var(--green)">1. Что ставится НА СЕРВЕР</div>
+            <div class="muted small">Сервер автоматически раздаёт эти переводы всем зашедшим игрокам:</div>
+            <ul style="margin:4px 0 0 18px;padding:0;font-size:12.5px;line-height:1.55">
+              <li><b>Квесты FTB Quests</b> (<code>config/ftbquests/quests/...</code>) — если на сервере они останутся английскими, у всех игроков на сервере квесты тоже будут на английском!</li>
+              <li><b>Деревья талантов Puffish Skills</b> (<code>config/puffish_skills/...</code>) — синхронизируются с сервера.</li>
+              <li><b>Датапаки диалогов</b> (<code>serkonid_dialogue.json</code>).</li>
+            </ul>
+            <div id="srvStatsServer" class="rec-tag" style="margin-top:auto;align-self:flex-start">Серверных файлов: 0</div>
+          </div>
+
+          <div class="param-card" style="display:flex;flex-direction:column;gap:6px">
+            <div style="font-weight:700;font-size:13px;color:var(--accent)">2. Что ставится ИГРОКАМ (Ресурспак)</div>
+            <div class="muted small">Сервер сам по себе не читает <code>assets/.../lang/ru_ru.json</code>:</div>
+            <ul style="margin:4px 0 0 18px;padding:0;font-size:12.5px;line-height:1.55">
+              <li><b>Сюжетные диалоги NPC</b> (<code>dialogue.*</code> — S'kellak, Radin, Hastur и др.).</li>
+              <li><b>Названия предметов, боссов и тултипы</b> (<code>Prominent</code>, <code>Custom Tooltips</code>).</li>
+              <li>Упаковываются в лёгкий архив <code>MCTranslate_RU.zip</code> (~150 КБ) — его можно скинуть друзьям в <code>resourcepacks</code> или прописать ссылку в <code>server.properties</code> (<code>resource-pack=...</code>), чтобы сервер сам скачал его игрокам!</li>
+            </ul>
+            <div id="srvStatsClient" class="rec-tag" style="margin-top:auto;align-self:flex-start">Клиентских lang-файлов: 0</div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button id="btnFilterServerTab" class="btn" style="margin-right:auto">Показать серверные файлы во вкладке</button>
+        <button class="btn" data-close>Закрыть</button>
+        <button id="btnBuildServerPack" class="btn primary">📦 Собрать пакет (Для Сервера + Ресурспак)…</button>
       </div>
     </div>
   </div>

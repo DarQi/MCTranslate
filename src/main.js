@@ -2,6 +2,8 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
 const { scanInstance, openSingleFile } = require('./core/scanner');
 const { buildOutput, outputAbs } = require('./core/extractors');
 const { translateBatch } = require('./core/translate');
@@ -249,7 +251,17 @@ ipcMain.handle('write', (e, { jobs, mode, targetDir }) => {
         fs.copyFileSync(out, b);
       }
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, content, 'utf8');
+      if ((j.type === 'lang-json' || j.type === 'dialogue-lang') && mode === 'export' && fs.existsSync(dest)) {
+        try {
+          const prev = JSON.parse(fs.readFileSync(dest, 'utf8'));
+          const next = JSON.parse(content);
+          fs.writeFileSync(dest, JSON.stringify({ ...prev, ...next }, null, 2) + '\n', 'utf8');
+        } catch {
+          fs.writeFileSync(dest, content, 'utf8');
+        }
+      } else {
+        fs.writeFileSync(dest, content, 'utf8');
+      }
       written.push(dest);
 
       // Track generated MCTranslate_RU resourcepack / datapack roots so we write pack.mcmeta
@@ -284,6 +296,114 @@ ipcMain.handle('write', (e, { jobs, mode, targetDir }) => {
   }
 
   return { written, errors, backupDir };
+});
+
+ipcMain.handle('write:server-pack', (e, { jobs, targetDir }) => {
+  const s = getSettings();
+  const written = [];
+  const errors = [];
+  const serverDir = path.join(targetDir, '1_Для_Сервера');
+  const clientRpDir = path.join(targetDir, '2_Для_Игроков_ResourcePack', 'MCTranslate_RU');
+  let serverCount = 0;
+  let clientCount = 0;
+
+  const SERVER_TYPES = new Set(['ftb', 'bq', 'puffish', 'dialogue-json']);
+
+  for (const j of jobs) {
+    try {
+      const content = buildOutput(j.abs, j.type, j.translations, s.targetLang);
+      const out = outputAbs(j.abs, j.type, s.targetLang);
+      const relOut = path.relative(j.base, out).replace(/\\/g, '/');
+
+      if (SERVER_TYPES.has(j.type)) {
+        const dest = path.join(serverDir, relOut);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, content, 'utf8');
+        written.push(dest);
+        serverCount++;
+        const mDp = /^(.*[\\/]MCTranslate_RU_Data)(?:[\\/]|$)/i.exec(dest);
+        if (mDp) {
+          const mcmeta = path.join(mDp[1], 'pack.mcmeta');
+          if (!fs.existsSync(mcmeta)) {
+            fs.writeFileSync(mcmeta, JSON.stringify({ pack: { pack_format: 15, supported_formats: [6, 48], description: 'MCTranslate Server Data Pack' } }, null, 2) + '\n', 'utf8');
+          }
+        }
+      } else {
+        // Client-side lang / dialogue-lang -> put inside clean resourcepack structure assets/<ns>/lang/ru_ru.json
+        const assetsIdx = relOut.toLowerCase().indexOf('assets/');
+        const innerAssets = assetsIdx >= 0 ? relOut.slice(assetsIdx) : path.posix.join('assets/modpack/lang', path.posix.basename(relOut));
+        const dest = path.join(clientRpDir, innerAssets);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        if (fs.existsSync(dest) && (j.type === 'lang-json' || j.type === 'dialogue-lang')) {
+          try {
+            const prev = JSON.parse(fs.readFileSync(dest, 'utf8'));
+            const next = JSON.parse(content);
+            fs.writeFileSync(dest, JSON.stringify({ ...prev, ...next }, null, 2) + '\n', 'utf8');
+          } catch {
+            fs.writeFileSync(dest, content, 'utf8');
+          }
+        } else {
+          fs.writeFileSync(dest, content, 'utf8');
+        }
+        written.push(dest);
+        clientCount++;
+      }
+    } catch (err) {
+      errors.push(`${path.basename(j.abs)}: ${err.message}`);
+    }
+  }
+
+  let zipPath = null;
+  let sha1 = '';
+  if (clientCount > 0) {
+    const mcmeta = path.join(clientRpDir, 'pack.mcmeta');
+    fs.mkdirSync(clientRpDir, { recursive: true });
+    fs.writeFileSync(
+      mcmeta,
+      JSON.stringify(
+        {
+          pack: {
+            pack_format: 15,
+            supported_formats: [6, 48],
+            description: 'MCTranslate Localization ResourcePack (RU)',
+          },
+        },
+        null,
+        2
+      ) + '\n',
+      'utf8'
+    );
+    zipPath = path.join(targetDir, '2_Для_Игроков_ResourcePack', 'MCTranslate_RU.zip');
+    try {
+      fs.rmSync(zipPath, { force: true });
+      execSync(`tar.exe -a -c -f "${zipPath}" -C "${clientRpDir}" "pack.mcmeta" "assets"`, { stdio: 'ignore' });
+      sha1 = crypto.createHash('sha1').update(fs.readFileSync(zipPath)).digest('hex');
+    } catch { /* ignore if tar unavailable */ }
+  }
+
+  const readmeTxt = [
+    '=== ПАКЕТ РУСИФИКАЦИИ СЕРВЕРА И КЛИЕНТОВ (MCTranslate) ===',
+    '',
+    '1. ПАПКА «1_Для_Сервера»:',
+    '   Содержит серверные файлы (квесты FTB Quests, ветки талантов Puffish Skills и датапаки диалогов).',
+    '   -> Скопируйте содержимое папки «1_Для_Сервера» (папку config) в корень вашего сервера с заменой файлов.',
+    '   -> При входе на сервер эти квесты и таланты АВТОМАТИЧЕСКИ синхронизируются всем игрокам!',
+    '',
+    '2. ПАПКА «2_Для_Игроков_ResourcePack»:',
+    '   Содержит ресурспак MCTranslate_RU.zip с переводом сюжетных диалогов NPC, предметов, боссов и интерфейса.',
+    '   Поскольку сервер Minecraft не передаёт языковые файлы (ru_ru.json) сам по себе, есть 2 варианта:',
+    '   Вариант А (простой): скиньте игрокам архив MCTranslate_RU.zip в папку resourcepacks (или config/paxi/resourcepacks).',
+    '   Вариант Б (автоматический через server.properties):',
+    '     Загрузите MCTranslate_RU.zip на любой прямой хостинг (Dropbox с ?dl=1, GitHub Releases или Discord) и укажите в server.properties:',
+    '     resource-pack=<ПРЯМАЯ_ССЫЛКА_НА_MCTranslate_RU.zip>',
+    ...(sha1 ? [`     resource-pack-sha1=${sha1}`] : []),
+    '',
+  ].join('\r\n');
+  try {
+    fs.writeFileSync(path.join(targetDir, 'ИНСТРУКЦИЯ_СЕРВЕР.txt'), readmeTxt, 'utf8');
+  } catch {}
+
+  return { written, errors, serverCount, clientCount, zipPath, sha1 };
 });
 
 ipcMain.handle('shell:open', (e, p) => shell.openPath(p));

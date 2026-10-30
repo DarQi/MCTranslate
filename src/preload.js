@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   saveProgressSync: (data) => ipcRenderer.sendSync('progress:save-sync', data),
   clearProgress: () => ipcRenderer.invoke('progress:clear'),
   write: (payload) => ipcRenderer.invoke('write', payload),
+  writeServerPack: (payload) => ipcRenderer.invoke('write:server-pack', payload),
   openPath: (p) => ipcRenderer.invoke('shell:open', p),
   showInFolder: (p) => ipcRenderer.invoke('shell:show', p),
 });
