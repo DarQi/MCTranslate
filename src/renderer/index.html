@@ -136,22 +136,103 @@
           </label>
         </div>
 
-        <h4>Нейросеть (OpenAI-совместимый API)</h4>
+        <h4>Нейросеть (DeepSeek / OpenAI / Gemini / Ollama)</h4>
         <div class="presets">
-          <span class="muted small">Пресеты:</span>
+          <span class="muted small">Провайдер:</span>
+          <button class="btn tiny" data-preset="deepseek">DeepSeek ★</button>
           <button class="btn tiny" data-preset="openai">OpenAI</button>
           <button class="btn tiny" data-preset="gemini">Gemini</button>
-          <button class="btn tiny" data-preset="deepseek">DeepSeek</button>
           <button class="btn tiny" data-preset="openrouter">OpenRouter</button>
-          <button class="btn tiny" data-preset="ollama">Ollama</button>
+          <button class="btn tiny" data-preset="ollama">Ollama (локально)</button>
         </div>
+
         <div class="grid2">
-          <label>Base URL <input id="sLlmBaseUrl" class="input" /></label>
-          <label>Модель <input id="sLlmModel" class="input" /></label>
-          <label>API ключ <input id="sLlmApiKey" class="input" type="password" placeholder="sk-…" /></label>
-          <label>Строк за запрос <input id="sLlmBatchSize" class="input" type="number" min="1" max="100" /></label>
+          <label>
+            <span class="lbl-row">Base URL <span class="info-tip" data-tip="Адрес API провайдера. Нажмите кнопку провайдера выше для автозаполнения.">i</span></span>
+            <input id="sLlmBaseUrl" class="input" />
+          </label>
+          <label>
+            <span class="lbl-row">Модель <span class="info-tip" data-tip="Для DeepSeek: deepseek-chat (быстрая V3, рекомендуется) или deepseek-reasoner (DeepThink R1).">i</span></span>
+            <input id="sLlmModel" class="input" />
+          </label>
         </div>
-        <label>Доп. инструкции для нейросети
+        <label>
+          <span class="lbl-row">API ключ <span class="info-tip" data-tip="Ключ от личного кабинета провайдера (для локальной Ollama не нужен). Хранится только на вашем ПК.">i</span></span>
+          <input id="sLlmApiKey" class="input" type="password" placeholder="sk-…" />
+        </label>
+
+        <div class="ai-box">
+          <div class="ai-box-row">
+            <label class="chk ai-deepthink">
+              <input type="checkbox" id="sLlmDeepThink" />
+              <span>Режим глубокого мышления (DeepThink / Reasoner)</span>
+            </label>
+            <span class="rec-badge">Выкл — Рекомендуется для скорости</span>
+            <span class="info-tip" data-tip="Включает цепочку рассуждений перед ответом (для DeepSeek автоматически включает модель deepseek-reasoner). Полезно для сложных сюжетных квестов, стихов и загадок, но работает в 3–5 раз медленнее. Для обычных сборок рекомендуется оставлять выключенным.">i</span>
+          </div>
+
+          <div class="grid2">
+            <label>
+              <span class="lbl-row">Стиль перевода <span class="info-tip" data-tip="Определяет тон перевода: Сбалансированный сохраняет шутки автора и понятность задач; Технический переводит сухо и строго.">i</span></span>
+              <select id="sLlmStyle" class="select">
+                <option value="balanced">Сбалансированный игровой (Рекомендуется)</option>
+                <option value="literal">Точный технический (механизмы, тултипы)</option>
+                <option value="creative">Литературный / Лорный (RPG и сюжет)</option>
+              </select>
+            </label>
+            <label>
+              <span class="lbl-row">Названия предметов и модов <span class="info-tip" data-tip="Дублирование в скобках (например, «Дробитель (Crusher)») помогает искать предметы в JEI на английском.">i</span></span>
+              <select id="sLlmKeepOriginalNames" class="select">
+                <option value="mods">Переводить предметы, оставлять моды (Рекомендуется)</option>
+                <option value="brackets">Дублировать в скобках для JEI: Воронка (Hopper)</option>
+                <option value="translate_all">Переводить абсолютно всё</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="param-mode-bar">
+            <span class="lbl-row">Параметры генерации <span class="info-tip" data-tip="В автоматическом режиме программа сама выставляет оптимальную температуру (0.2), размер пакета и лимит токенов под выбранную модель.">i</span></span>
+            <div class="seg" id="llmParamSeg">
+              <button type="button" data-pmode="auto" class="active">Автоматически (Рекомендуется)</button>
+              <button type="button" data-pmode="custom">Ручная настройка</button>
+            </div>
+          </div>
+
+          <div id="llmAutoHint" class="auto-hint">
+            Активен оптимальный профиль: <b>Temperature 0.2</b> (без галлюцинаций и отсебятины), <b>Top-P 0.95</b>, пакетная отправка с автоподстройкой под выбранную модель.
+          </div>
+
+          <div id="llmCustomParams" class="grid2 hidden">
+            <label>
+              <span class="lbl-row">Температура (0.0 – 1.5) <span class="rec-inline">0.2 Рекомендуется</span> <span class="info-tip" data-tip="0.0–0.3 (Рекомендуется) — строгий и стабильный перевод без выдумывания отсебятины. Значения выше 0.6 делают текст свободнее, но повышают риск потери кодов форматирования.">i</span></span>
+              <input id="sLlmTemperature" class="input" type="number" min="0" max="1.5" step="0.05" />
+            </label>
+            <label>
+              <span class="lbl-row">Строк за 1 запрос (1 – 100) <span class="rec-inline">25 Рекомендуется</span> <span class="info-tip" data-tip="Сколько строк отправлять нейросети за одно обращение. 20–30 строк (Рекомендуется) дают лучший баланс скорости и точности (для DeepThink лучше 10–15).">i</span></span>
+              <input id="sLlmBatchSize" class="input" type="number" min="1" max="100" />
+            </label>
+            <label>
+              <span class="lbl-row">Top-P (0.1 – 1.0) <span class="rec-inline">0.95 Рекомендуется</span> <span class="info-tip" data-tip="Порог выборки слов. 0.95 (Рекомендуется) отсекает случайные и неуместные по смыслу слова.">i</span></span>
+              <input id="sLlmTopP" class="input" type="number" min="0.1" max="1" step="0.05" />
+            </label>
+            <label>
+              <span class="lbl-row">Лимит токенов ответа <span class="rec-inline">4096 Рекомендуется</span> <span class="info-tip" data-tip="Максимальная длина ответа нейросети. 4096 токенов (Рекомендуется) достаточно для пакета из 25–30 строк (для DeepThink рекомендуется 8192).">i</span></span>
+              <input id="sLlmMaxTokens" class="input" type="number" min="512" max="32768" step="512" />
+            </label>
+            <label>
+              <span class="lbl-row">Глубина размышлений (Reasoning) <span class="info-tip" data-tip="Для моделей с настраиваемой глубиной мысли (OpenAI o3-mini, Gemini 2.5, OpenRouter). Для DeepSeek управляется галочкой DeepThink выше.">i</span></span>
+              <select id="sLlmReasoningEffort" class="select">
+                <option value="auto">Автоматически (Рекомендуется)</option>
+                <option value="low">Низкая (быстрее)</option>
+                <option value="medium">Средняя</option>
+                <option value="high">Высокая (макс. глубина)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <label>
+          <span class="lbl-row">Доп. инструкции для нейросети (необязательно) <span class="info-tip" data-tip="Любые свои пожелания к переводу: например, «обращайся к игроку на ты» или «сохраняй средневековый стиль речи».">i</span></span>
           <input id="sLlmExtraPrompt" class="input" placeholder="Например: обращайся к игроку на «ты», названия модов не переводи" />
         </label>
 
