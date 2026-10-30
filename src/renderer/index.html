@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>MCTranslate</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">MCTranslate</div>
+    <button id="btnOpenInstance" class="btn primary">Открыть сборку</button>
+    <button id="btnOpenFiles" class="btn">Файлы…</button>
+
+    <div class="spacer"></div>
+
+    <div class="seg" id="modeSeg">
+      <button data-mode="manual" class="active">Ручной</button>
+      <button data-mode="auto">Автоперевод</button>
+    </div>
+    <select id="engineSelect" class="select" title="Движок перевода">
+      <option value="google">Google Translate</option>
+      <option value="deepl">DeepL</option>
+      <option value="mymemory">MyMemory</option>
+      <option value="llm">Нейросеть (API)</option>
+    </select>
+
+    <div class="spacer"></div>
+
+    <button id="btnTheme" class="btn icon-btn" title="Переключить тему (Тёмная / Светлая)">☀</button>
+    <button id="btnSettings" class="btn icon-btn" title="Настройки">⚙</button>
+    <button id="btnExport" class="btn" title="Сохранить переведённые файлы в отдельную папку">Экспорт</button>
+    <button id="btnApply" class="btn success">Применить</button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="side-meta">
+          <span id="instanceName" class="instance-name">Сборка не открыта</span>
+          <span id="totalText" class="total-count">0 / 0</span>
+        </div>
+        <div class="bar"><div id="totalBar" class="fill"></div></div>
+        <input id="fileSearch" class="input search-sm" placeholder="Фильтр файлов…" />
+      </div>
+      <div id="fileList" class="file-list"></div>
+    </aside>
+
+    <main class="main">
+      <section id="autoPanel" class="auto-panel hidden">
+        <div class="auto-controls">
+          <div class="seg small-seg" id="scopeSeg">
+            <label><input type="radio" name="scope" value="file" checked /><span>Текущий файл</span></label>
+            <label><input type="radio" name="scope" value="all" /><span>Вся сборка</span></label>
+          </div>
+          <label class="chk"><input type="checkbox" id="autoOnlyTodo" checked /> Только непереведённые</label>
+          <div class="bar auto-bar"><div id="autoBar" class="fill"></div></div>
+          <span id="autoText" class="muted small">Готов</span>
+          <button id="btnAutoStart" class="btn primary">Запустить</button>
+          <button id="btnAutoStop" class="btn danger" disabled>Стоп</button>
+        </div>
+      </section>
+
+      <div class="toolbar">
+        <div class="file-title" id="fileTitle">Выберите сборку или файлы</div>
+        <div class="spacer"></div>
+        <div class="pills">
+          <label class="pill"><input type="checkbox" id="onlyTodo" /><span>Непереведённые</span></label>
+          <label class="pill"><input type="checkbox" id="onlyWarn" /><span>Ошибки</span></label>
+          <label class="pill"><input type="checkbox" id="previewToggle" /><span>Цвета</span></label>
+        </div>
+        <input id="rowSearch" class="input search-sm" placeholder="Поиск по тексту…" />
+      </div>
+
+      <div class="col-headers">
+        <div>Оригинал</div>
+        <div>Перевод</div>
+      </div>
+
+      <div id="rows" class="rows">
+        <div class="empty">
+          <h2>Откройте сборку Minecraft</h2>
+          <p>Нажмите <b>«Открыть сборку»</b> и укажите папку модпака (где лежат <code>config</code>, <code>kubejs</code>, <code>resources</code>).</p>
+          <p class="muted">Либо выберите отдельные файлы <code>.snbt</code>, <code>.json</code>, <code>.lang</code> через кнопку «Файлы…».</p>
+        </div>
+      </div>
+      <div class="pager" id="pager"></div>
+    </main>
+  </div>
+
+  <!-- Settings modal -->
+  <div id="settingsModal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head"><h3>Настройки</h3><button class="btn ghost" data-close>✕</button></div>
+      <div class="modal-body">
+        <div class="grid2">
+          <label>Язык оригинала
+            <select id="sSourceLang" class="select">
+              <option value="auto">Автоопределение</option>
+              <option value="en">Английский</option>
+              <option value="zh-CN">Китайский</option>
+              <option value="ja">Японский</option>
+              <option value="ko">Корейский</option>
+            </select>
+          </label>
+          <label>Язык перевода (код файла)
+            <select id="sTargetLang" class="select">
+              <option value="ru_ru">Русский (ru_ru)</option>
+              <option value="uk_ua">Украинский (uk_ua)</option>
+              <option value="be_by">Белорусский (be_by)</option>
+              <option value="kk_kz">Казахский (kk_kz)</option>
+              <option value="de_de">Немецкий (de_de)</option>
+              <option value="fr_fr">Французский (fr_fr)</option>
+              <option value="es_es">Испанский (es_es)</option>
+              <option value="pl_pl">Польский (pl_pl)</option>
+              <option value="pt_br">Португальский (pt_br)</option>
+              <option value="zh_cn">Китайский (zh_cn)</option>
+              <option value="ja_jp">Японский (ja_jp)</option>
+            </select>
+          </label>
+        </div>
+
+        <h4>DeepL / Google / MyMemory</h4>
+        <div class="grid2">
+          <label>DeepL API ключ (необязательно)
+            <input id="sDeeplApiKey" class="input" type="password" placeholder="Пусто = DeepL Web, или ключ ...:fx" />
+          </label>
+          <label>DeepL / DeepLX URL (необязательно)
+            <input id="sDeeplApiUrl" class="input" placeholder="По умолчанию официальный DeepL" />
+          </label>
+          <label>Пауза между пакетами (мс)
+            <input id="sRequestDelayMs" class="input" type="number" min="0" max="5000" step="50" />
+          </label>
+          <label>Email для MyMemory (необязательно)
+            <input id="sMymemoryEmail" class="input" placeholder="name@example.com" />
+          </label>
+        </div>
+
+        <h4>Нейросеть (OpenAI-совместимый API)</h4>
+        <div class="presets">
+          <span class="muted small">Пресеты:</span>
+          <button class="btn tiny" data-preset="openai">OpenAI</button>
+          <button class="btn tiny" data-preset="gemini">Gemini</button>
+          <button class="btn tiny" data-preset="deepseek">DeepSeek</button>
+          <button class="btn tiny" data-preset="openrouter">OpenRouter</button>
+          <button class="btn tiny" data-preset="ollama">Ollama</button>
+        </div>
+        <div class="grid2">
+          <label>Base URL <input id="sLlmBaseUrl" class="input" /></label>
+          <label>Модель <input id="sLlmModel" class="input" /></label>
+          <label>API ключ <input id="sLlmApiKey" class="input" type="password" placeholder="sk-…" /></label>
+          <label>Строк за запрос <input id="sLlmBatchSize" class="input" type="number" min="1" max="100" /></label>
+        </div>
+        <label>Доп. инструкции для нейросети
+          <input id="sLlmExtraPrompt" class="input" placeholder="Например: обращайся к игроку на «ты», названия модов не переводи" />
+        </label>
+
+        <h4>Глоссарий (English = Перевод)</h4>
+        <textarea id="sGlossary" class="input mono" rows="5"></textarea>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" data-close>Отмена</button>
+        <button id="btnSaveSettings" class="btn primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div id="confirmModal" class="modal hidden">
+    <div class="modal-box small">
+      <div class="modal-head"><h3 id="confirmTitle">Подтверждение</h3></div>
+      <div class="modal-body" id="confirmBody"></div>
+      <div class="modal-foot">
+        <button class="btn" id="confirmNo">Отмена</button>
+        <button class="btn primary" id="confirmYes">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+  <script src="app.js"></script>
+</body>
+</html>
