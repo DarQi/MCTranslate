@@ -1,0 +1,16 @@
+{
+  "name": "mctranslate",
+  "productName": "MCTranslate",
+  "version": "1.0.0",
+  "description": "Переводчик квестов и lang-файлов Minecraft-сборок (FTB Quests, Better Questing, KubeJS)",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "MCTranslate",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^45.0.0"
+  }
+}
