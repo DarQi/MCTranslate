@@ -5,16 +5,27 @@ const { parse, encodeString, splice, pathToId } = require('./snbt');
 
 /**
  * File types:
- *  ftb       – FTB Quests chapter/quest file with inline text (edited in place)
- *  ftb-lang  – FTB Quests lang file (lang/en_us.snbt) -> written to ru_ru.snbt
- *  bq        – Better Questing DefaultQuests json (edited in place)
- *  lang-json – Minecraft lang json (en_us.json)     -> ru_ru.json
- *  lang      – legacy lang file (en_US.lang)          -> ru_RU.lang
+ *  ftb           – FTB Quests chapter/quest file with inline text (edited in place)
+ *  ftb-lang      – FTB Quests lang file (lang/en_us.snbt) -> written to ru_ru.snbt
+ *  bq            – Better Questing DefaultQuests json (edited in place)
+ *  dialogue-lang – Dialogue keys (dialogue.*) from a mod/pack lang json -> written to resourcepack ru_ru.json
+ *  dialogue-json – Structured dialogue json (Prominent/Blabber/NPC dialogues) -> edited or written to datapack
+ *  puffish       – Puffish Skills talent tree (category.json / definitions.json) -> edited in place
+ *  lang-json     – Minecraft lang json (en_us.json) -> ru_ru.json
+ *  lang          – Legacy lang file (en_US.lang) -> ru_RU.lang
  */
 
 const FTB_TEXT_KEYS = new Set(['title', 'subtitle', 'description', 'text']);
 const BQ_TEXT_KEYS = new Set(['name', 'desc', 'description']);
+const DIALOGUE_JSON_KEYS = new Set(['text', 'title', 'subtitle', 'prompt', 'line', 'message']);
+const PUFFISH_KEYS = new Set(['title', 'description', 'subtitle']);
 const CYRILLIC = /[а-яё]/i;
+
+const DIALOGUE_KEY_RE = /^(?:dialogue|dialog|npc_dialogue|quest_dialogue|chat\.dialogue|cutscene)\b|\.(?:dialogue|dialog)\./i;
+
+function isDialogueLangKey(key) {
+  return DIALOGUE_KEY_RE.test(String(key || ''));
+}
 
 function stripBqSuffix(k) {
   return typeof k === 'string' ? k.replace(/:\d+$/, '') : k;
@@ -33,7 +44,11 @@ function isTranslatable(value) {
   if (/^[\[{]\s*["{\[]/.test(v)) return false; // raw JSON text component
   if (/^[a-z0-9_\-]+:[a-z0-9_\/.\-]+$/i.test(v)) return false; // resource id
   if (/^[a-z0-9_]+(\.[a-z0-9_\-]+)+$/i.test(v) && !/\s/.test(v)) return false; // lang key
-  const stripped = v.replace(/(?:§[0-9a-fk-orx]|&[0-9a-fk-or])/gi, '').replace(/\{[^{}]*\}/g, '');
+  if (/^#[0-9a-f]{3,8}$/i.test(v)) return false; // hex color
+  const stripped = v
+    .replace(/(?:§[0-9a-fk-orx]|&[0-9a-fk-or])/gi, '')
+    .replace(/\{[^{}]*\}/g, '')
+    .replace(/[\uE000-\uFAFF\uA980-\uA9DF]/g, '');
   if (!/\p{L}/u.test(stripped)) return false; // no letters at all
   return true;
 }
@@ -41,15 +56,23 @@ function isTranslatable(value) {
 function detectType(absPath) {
   const lower = absPath.replace(/\\/g, '/').toLowerCase();
   const base = path.basename(lower);
+  if (lower.includes('/.mctranslate/extracted/dialogues/')) return 'dialogue-lang';
+  if (lower.includes('/.mctranslate/extracted/datapack/')) return 'dialogue-json';
+  if (lower.includes('/.mctranslate/extracted/lang/')) return 'lang-json';
   if (base.endsWith('.lang')) return /en_us\.lang$/.test(base) ? 'lang' : null;
   if (base.endsWith('.snbt')) {
     if (/\/lang\/(en_us\.snbt$|en_us\/)/.test(lower)) return 'ftb-lang';
-    if (/\/lang\//.test(lower)) return null; // other languages
+    if (/\/lang\//.test(lower)) return null;
     return 'ftb';
   }
   if (base.endsWith('.json')) {
     if (base === 'en_us.json') return 'lang-json';
     if (/\/lang\//.test(lower)) return null;
+    if (lower.includes('/puffish_skills/')) {
+      if (base === 'category.json' || base === 'definitions.json') return 'puffish';
+      return null;
+    }
+    if (/\/(dialogues?|blabber|cutscenes?)\//.test(lower) || /dialogue/i.test(base)) return 'dialogue-json';
     if (lower.includes('betterquesting') || lower.includes('defaultquests') || lower.includes('questdatabase')) return 'bq';
     return 'bq';
   }
@@ -59,32 +82,52 @@ function detectType(absPath) {
 /** Path where translated output goes (relative to the same base). */
 function outputRel(rel, type, langCode) {
   const lc = langCode || 'ru_ru';
-  if (type === 'ftb' || type === 'bq') return rel;
+  if (type === 'ftb' || type === 'bq' || type === 'puffish' || type === 'dialogue-json') return rel;
   if (type === 'lang') {
     return rel.replace(/en_us(\.lang)$/i, (m, ext) => {
       const upper = /en_US/.test(m);
       return (upper ? lc.replace(/_(\w+)$/, (x, r) => '_' + r.toUpperCase()) : lc) + ext;
     });
   }
-  // lang-json / ftb-lang: replace the en_us path segment / file name
   return rel.replace(/en_us(?=\.json$|\.snbt$|[\\/])/i, lc);
 }
 
 /** Absolute path of the translated output for a source file. */
 function outputAbs(absPath, type, langCode) {
-  if (type === 'ftb' || type === 'bq') return absPath;
   const norm = absPath.replace(/\\/g, '/');
+  const lc = langCode || 'ru_ru';
+
+  // Virtual extracted files from .jar / .zip archives -> write into resourcepack / datapack
+  const extMatch = /^(.*)\/\.mctranslate\/extracted\/(dialogues|lang|datapack)\/(.*)$/i.exec(norm);
+  if (extMatch) {
+    const instanceRoot = extMatch[1];
+    const kind = extMatch[2].toLowerCase();
+    const innerRel = extMatch[3];
+    const hasPaxi = fs.existsSync(path.join(instanceRoot, 'config', 'paxi'));
+    if (kind === 'datapack') {
+      const dpBase = hasPaxi
+        ? path.join(instanceRoot, 'config', 'paxi', 'datapacks', 'MCTranslate_RU_Data')
+        : path.join(instanceRoot, 'datapacks', 'MCTranslate_RU_Data');
+      return path.normalize(path.join(dpBase, innerRel));
+    }
+    const rpBase = hasPaxi
+      ? path.join(instanceRoot, 'config', 'paxi', 'resourcepacks', 'MCTranslate_RU')
+      : path.join(instanceRoot, 'resourcepacks', 'MCTranslate_RU');
+    const outInner = outputRel(innerRel, 'lang-json', lc);
+    return path.normalize(path.join(rpBase, outInner));
+  }
+
+  if (type === 'ftb' || type === 'bq' || type === 'puffish' || type === 'dialogue-json') return absPath;
   const idx = norm.toLowerCase().lastIndexOf('/lang/');
   let res;
-  if (idx >= 0) res = norm.slice(0, idx + 6) + outputRel(norm.slice(idx + 6), type, langCode);
-  else res = path.posix.join(path.posix.dirname(norm), outputRel(path.posix.basename(norm), type, langCode));
+  if (idx >= 0) res = norm.slice(0, idx + 6) + outputRel(norm.slice(idx + 6), type, lc);
+  else res = path.posix.join(path.posix.dirname(norm), outputRel(path.posix.basename(norm), type, lc));
   return path.normalize(res);
 }
 
 // ---------------------------------------------------------------- extraction
 
 function groupLabelFtb(root, p) {
-  // find nearest quest / chapter / task / reward container for a readable context
   const containers = ['quests', 'tasks', 'rewards', 'chapters', 'chapter_groups'];
   let node = root;
   let label = '';
@@ -102,6 +145,29 @@ function groupLabelFtb(root, p) {
   return label;
 }
 
+function formatDialogueKeyGroup(key) {
+  // e.g. "dialogue.skellak.worrying_reunion.1_2" -> "S'kellak · worrying_reunion"
+  // e.g. "dialogue.prominent.bromos_axe.part2.greet" -> "bromos_axe · part2"
+  const parts = String(key).split('.');
+  if (parts[0] === 'dialogue' || parts[0] === 'dialog') parts.shift();
+  if (parts[0] === 'prominent' && parts.length > 2) parts.shift();
+  const speakerMap = {
+    skellak: "S'kellak",
+    radin: 'Radin',
+    mirgaff: 'Mirgaff',
+    alm: 'Alm',
+    gumas: 'Gumas',
+    hastur: 'Hastur',
+    guard: 'Стражник',
+    guild_leader: 'Глава гильдии',
+    bromos_axe: 'Топор Бромо',
+    type: 'Тип реплики',
+  };
+  const sp = speakerMap[parts[0]] || parts[0] || 'Диалог';
+  const scene = parts[1] && !/^\d+$/.test(parts[1]) ? parts[1] : '';
+  return scene ? `💬 ${sp} · ${scene}` : `💬 ${sp}`;
+}
+
 function extractStructured(text, type) {
   const { root, strings } = parse(text);
   const rows = [];
@@ -111,12 +177,16 @@ function extractStructured(text, type) {
     if (type === 'ftb') ok = FTB_TEXT_KEYS.has(key);
     else if (type === 'ftb-lang') ok = true;
     else if (type === 'bq') ok = BQ_TEXT_KEYS.has(stripBqSuffix(key));
+    else if (type === 'dialogue-json') ok = DIALOGUE_JSON_KEYS.has(key);
+    else if (type === 'puffish') ok = PUFFISH_KEYS.has(key) && !s.path.includes('frame') && !s.path.includes('icon');
     if (!ok || !isTranslatable(s.value)) continue;
 
     let group = '';
     if (type === 'ftb') group = groupLabelFtb(root, s.path);
     else if (type === 'ftb-lang') group = String(s.path[0] || '');
     else if (type === 'bq') group = groupLabelBq(root, s.path);
+    else if (type === 'dialogue-json') group = `💬 ${s.path.slice(0, 2).join(' · ')}`;
+    else if (type === 'puffish') group = s.path.length > 1 ? `Талант «${s.path[0]}»` : 'Категория';
 
     rows.push({
       id: pathToId(s.path),
@@ -130,7 +200,6 @@ function extractStructured(text, type) {
 }
 
 function groupLabelBq(root, p) {
-  // Walk to the entry that contains properties.betterquesting and use its name
   let node = root;
   for (let k = 0; k < p.length; k++) {
     if (stripBqSuffix(p[k]) === 'properties') {
@@ -152,7 +221,7 @@ function groupLabelBq(root, p) {
 function parseLangFile(text) {
   const rows = [];
   const lines = text.split(/\r?\n/);
-  let offset = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const offset = text.charCodeAt(0) === 0xfeff ? 1 : 0;
   if (offset) lines[0] = lines[0].slice(1);
   lines.forEach((line, idx) => {
     const m = /^([^#=\s][^=]*)=(.*)$/.exec(line);
@@ -167,7 +236,7 @@ function loadExistingTranslations(outAbs, type) {
   if (!fs.existsSync(outAbs)) return map;
   try {
     const text = fs.readFileSync(outAbs, 'utf8');
-    if (type === 'lang-json') {
+    if (type === 'lang-json' || type === 'dialogue-lang') {
       const obj = JSON.parse(text.replace(/^\uFEFF/, ''));
       for (const [k, v] of Object.entries(obj)) if (typeof v === 'string') map[k] = v;
     } else if (type === 'lang') {
@@ -181,33 +250,37 @@ function loadExistingTranslations(outAbs, type) {
 
 /**
  * Extract translatable rows from a file.
- * Returns { type, rows:[{id, field, group, original, translation}], error? }
+ * Returns [{id, field, group, original, translation}]
  */
 function extractFile(absPath, type, langCode) {
   const text = fs.readFileSync(absPath, 'utf8');
   let rows = [];
-  if (type === 'lang-json') {
+  if (type === 'lang-json' || type === 'dialogue-lang') {
     const { strings } = parse(text);
     for (const s of strings) {
       if (s.path.length !== 1 || !isTranslatable(s.value)) continue;
       const key = String(s.path[0]);
-      if (key.startsWith('_comment')) continue;
-      rows.push({ id: key, field: key, group: key.split('.').slice(0, 2).join('.'), original: s.value });
+      if (key.startsWith('_comment') || key.startsWith('#comment')) continue;
+      const group = type === 'dialogue-lang' || isDialogueLangKey(key)
+        ? formatDialogueKeyGroup(key)
+        : key.split('.').slice(0, 2).join('.');
+      rows.push({ id: key, field: key, group, original: s.value });
     }
   } else if (type === 'lang') {
     for (const r of parseLangFile(text).rows) {
       if (!isTranslatable(r.value)) continue;
-      rows.push({ id: r.key, field: r.key, group: r.key.split('.').slice(0, 2).join('.'), original: r.value });
+      const group = isDialogueLangKey(r.key) ? formatDialogueKeyGroup(r.key) : r.key.split('.').slice(0, 2).join('.');
+      rows.push({ id: r.key, field: r.key, group, original: r.value });
     }
   } else {
     rows = extractStructured(text, type).map(({ _pos, ...r }) => r);
   }
 
-  // pre-fill translations
-  const existing = type === 'ftb' || type === 'bq' ? {} : loadExistingTranslations(outputAbs(absPath, type, langCode), type);
+  const inPlaceTypes = new Set(['ftb', 'bq', 'puffish', 'dialogue-json']);
+  const existing = inPlaceTypes.has(type) ? {} : loadExistingTranslations(outputAbs(absPath, type, langCode), type);
   for (const r of rows) {
     if (existing[r.id] !== undefined && existing[r.id] !== r.original) r.translation = existing[r.id];
-    else if ((type === 'ftb' || type === 'bq') && CYRILLIC.test(r.original)) r.translation = r.original;
+    else if (inPlaceTypes.has(type) && CYRILLIC.test(r.original)) r.translation = r.original;
     else r.translation = '';
   }
   return rows;
@@ -226,15 +299,14 @@ function buildOutput(absPath, type, translations, langCode) {
     return typeof v === 'string' && v.length ? v : null;
   };
 
-  if (type === 'lang-json') {
-    const existing = loadExistingTranslations(outputAbs(absPath, type, langCode), 'lang-json');
+  if (type === 'lang-json' || type === 'dialogue-lang') {
+    const outAbs = outputAbs(absPath, type, langCode);
+    const existing = loadExistingTranslations(outAbs, 'lang-json');
     const src = JSON.parse(text.replace(/^\uFEFF/, ''));
-    const out = {};
+    const out = { ...existing };
     for (const k of Object.keys(src)) {
       if (tr(k)) out[k] = tr(k);
-      else if (existing[k] !== undefined) out[k] = existing[k];
     }
-    for (const k of Object.keys(existing)) if (!(k in out)) out[k] = existing[k];
     return JSON.stringify(out, null, 2) + '\n';
   }
 
@@ -250,7 +322,6 @@ function buildOutput(absPath, type, translations, langCode) {
       .join('\n');
   }
 
-  // structured: splice string literals
   const format = absPath.toLowerCase().endsWith('.json') ? 'json' : 'snbt';
   const { strings } = parse(text);
   const reps = [];
@@ -262,4 +333,12 @@ function buildOutput(absPath, type, translations, langCode) {
   return splice(text, reps);
 }
 
-module.exports = { detectType, extractFile, buildOutput, outputRel, outputAbs, isTranslatable };
+module.exports = {
+  detectType,
+  extractFile,
+  buildOutput,
+  outputRel,
+  outputAbs,
+  isTranslatable,
+  isDialogueLangKey,
+};

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   scan: (dir) => ipcRenderer.invoke('scan', dir),
   openFiles: (paths) => ipcRenderer.invoke('open-files', paths),
   translate: (texts) => ipcRenderer.invoke('translate', texts),
+  fetchLlmModels: (payload) => ipcRenderer.invoke('llm:models', payload),
   loadProgress: () => ipcRenderer.invoke('progress:load'),
   saveProgress: (data) => ipcRenderer.invoke('progress:save', data),
   saveProgressSync: (data) => ipcRenderer.sendSync('progress:save-sync', data),

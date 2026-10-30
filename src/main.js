@@ -174,6 +174,29 @@ ipcMain.handle('translate', async (e, texts) => {
   }
 });
 
+ipcMain.handle('llm:models', async (e, { baseUrl, apiKey }) => {
+  try {
+    const base = String(baseUrl || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+    const headers = { 'Accept': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey.trim()}`;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const res = await fetch(`${base}/models`, { method: 'GET', headers, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${txt.slice(0, 150)}`);
+    }
+    const data = await res.json();
+    const list = Array.isArray(data.data) ? data.data : Array.isArray(data.models) ? data.models : [];
+    const ids = list
+      .map((m) => String(m.id || m.name || '').replace(/^models\//, ''))
+      .filter(Boolean);
+    return { ok: true, models: Array.from(new Set(ids)) };
+  } catch (err) {
+    return { ok: false, error: err.message || String(err) };
+  }
+});
+
 // progress: { [absPath]: { [rowId]: translation } }
 ipcMain.handle('progress:load', () => loadMergedProgress());
 ipcMain.handle('progress:save', (e, data) => {
@@ -201,6 +224,8 @@ ipcMain.handle('write', (e, { jobs, mode, targetDir }) => {
   const written = [];
   const errors = [];
   let backupDir = null;
+  const packDirs = new Set();
+
   for (const j of jobs) {
     try {
       const content = buildOutput(j.abs, j.type, j.translations, s.targetLang);
@@ -218,10 +243,38 @@ ipcMain.handle('write', (e, { jobs, mode, targetDir }) => {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.writeFileSync(dest, content, 'utf8');
       written.push(dest);
+
+      // Track generated MCTranslate_RU resourcepack / datapack roots so we write pack.mcmeta
+      const mPack = /^(.*[\\/]MCTranslate_RU(?:_Data)?)(?:[\\/]|$)/i.exec(dest);
+      if (mPack) packDirs.add(mPack[1]);
     } catch (err) {
       errors.push(`${path.basename(j.abs)}: ${err.message}`);
     }
   }
+
+  for (const pd of packDirs) {
+    try {
+      const mcmeta = path.join(pd, 'pack.mcmeta');
+      if (!fs.existsSync(mcmeta)) {
+        fs.writeFileSync(
+          mcmeta,
+          JSON.stringify(
+            {
+              pack: {
+                pack_format: 15,
+                supported_formats: [6, 48],
+                description: 'MCTranslate Localization Pack',
+              },
+            },
+            null,
+            2
+          ) + '\n',
+          'utf8'
+        );
+      }
+    } catch {}
+  }
+
   return { written, errors, backupDir };
 });
 

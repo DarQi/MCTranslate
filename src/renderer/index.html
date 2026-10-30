@@ -41,6 +41,12 @@
           <span id="totalText" class="total-count">0 / 0</span>
         </div>
         <div class="bar"><div id="totalBar" class="fill"></div></div>
+        <div class="side-tabs" id="sideTabs">
+          <button type="button" data-tab="all" class="active">Все</button>
+          <button type="button" data-tab="quests">Квесты</button>
+          <button type="button" data-tab="dialogues">Диалоги <span id="dlgBadge" class="tab-badge hidden">0</span></button>
+          <button type="button" data-tab="other">Таланты / Lang</button>
+        </div>
         <input id="fileSearch" class="input search-sm" placeholder="Фильтр файлов…" />
       </div>
       <div id="fileList" class="file-list"></div>
@@ -51,6 +57,7 @@
         <div class="auto-controls">
           <div class="seg small-seg" id="scopeSeg">
             <label><input type="radio" name="scope" value="file" checked /><span>Текущий файл</span></label>
+            <label><input type="radio" name="scope" value="tab" /><span>Текущая вкладка</span></label>
             <label><input type="radio" name="scope" value="all" /><span>Вся сборка</span></label>
           </div>
           <label class="chk"><input type="checkbox" id="autoOnlyTodo" checked /> Только непереведённые</label>
@@ -152,8 +159,13 @@
             <input id="sLlmBaseUrl" class="input" />
           </label>
           <label>
-            <span class="lbl-row">Модель <span class="info-tip" data-tip="Для DeepSeek: deepseek-chat (быстрая V3, рекомендуется) или deepseek-reasoner (DeepThink R1).">i</span></span>
-            <input id="sLlmModel" class="input" />
+            <span class="lbl-row">
+              Модель
+              <span class="info-tip" data-tip="Выберите модель из списка, нажмите «↻ С сервера» для загрузки актуальных моделей по вашему ключу или выберите «Ввести вручную…».">i</span>
+              <button type="button" id="btnFetchModels" class="btn tiny" style="margin-left:auto" title="Запросить актуальный список моделей напрямую у провайдера (GET /models)">↻ С сервера</button>
+            </span>
+            <select id="sLlmModelSelect" class="select"></select>
+            <input id="sLlmModel" class="input hidden" placeholder="Введите ID модели вручную…" />
           </label>
         </div>
         <label>

@@ -11,7 +11,7 @@
  *  - llm      : OpenAI-compatible LLM API (OpenAI, Gemini, DeepSeek, OpenRouter, Ollama)
  */
 
-const PROTECT_RE = /(?:(?:§[0-9a-fk-orx]|&[0-9a-fk-or])+|\{[^{}]*\}|%(?:\d+\$)?[sdf%]|<[^<>]+>|\\n)/gi;
+const PROTECT_RE = /(?:(?:§[0-9a-fk-orx]|&[0-9a-fk-or])+|\{[^{}]*\}|%(?:\d+\$)?[sdf%]|<[^<>]+>|\\n|[\uE000-\uFAFF\uA980-\uA9DF]+)/gi;
 
 function parseGlossary(text) {
   const list = [];

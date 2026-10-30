@@ -6,21 +6,79 @@ const TYPE_GROUP = {
   ftb: 'FTB Quests',
   'ftb-lang': 'FTB Quests (lang)',
   bq: 'Better Questing',
+  'dialogue-lang': '💬 Диалоги (NPC)',
+  'dialogue-json': '💬 Диалоги (Датапак)',
+  puffish: '🌳 Деревья талантов',
   'lang-json': 'Предметы и тултипы',
   lang: 'Предметы и тултипы',
 };
+function fileTab(f) {
+  if (f.type === 'dialogue-lang' || f.type === 'dialogue-json') return 'dialogues';
+  if (f.type === 'ftb' || f.type === 'ftb-lang' || f.type === 'bq') return 'quests';
+  return 'other';
+}
 const PRESETS = {
-  openai: { llmBaseUrl: 'https://api.openai.com/v1', llmModel: 'gpt-4o-mini' },
-  gemini: { llmBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', llmModel: 'gemini-2.5-flash' },
-  deepseek: { llmBaseUrl: 'https://api.deepseek.com/v1', llmModel: 'deepseek-chat' },
-  openrouter: { llmBaseUrl: 'https://openrouter.ai/api/v1', llmModel: 'google/gemini-2.5-flash' },
-  ollama: { llmBaseUrl: 'http://localhost:11434/v1', llmModel: 'qwen2.5:7b' },
+  deepseek: {
+    llmBaseUrl: 'https://api.deepseek.com/v1',
+    llmModel: 'deepseek-chat',
+    models: [
+      { id: 'deepseek-chat', label: 'deepseek-chat — DeepSeek V3 (Рекомендуется)' },
+      { id: 'deepseek-reasoner', label: 'deepseek-reasoner — DeepSeek R1 (DeepThink)' },
+    ],
+  },
+  openai: {
+    llmBaseUrl: 'https://api.openai.com/v1',
+    llmModel: 'gpt-4.1-mini',
+    models: [
+      { id: 'gpt-4.1-mini', label: 'gpt-4.1-mini (Рекомендуется — быстрый и точный)' },
+      { id: 'gpt-4.1', label: 'gpt-4.1 (Флагманский)' },
+      { id: 'gpt-4.1-nano', label: 'gpt-4.1-nano (Самый дешёвый)' },
+      { id: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+      { id: 'gpt-4o', label: 'gpt-4o' },
+      { id: 'o4-mini', label: 'o4-mini (Reasoning)' },
+      { id: 'o3-mini', label: 'o3-mini (Reasoning)' },
+    ],
+  },
+  gemini: {
+    llmBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    llmModel: 'gemini-3-flash-preview',
+    models: [
+      { id: 'gemini-3-flash-preview', label: 'gemini-3-flash-preview (Рекомендуется — Gemini 3 Flash)' },
+      { id: 'gemini-3.1-pro-preview', label: 'gemini-3.1-pro-preview (Gemini 3.1 Pro)' },
+      { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash (Стабильная)' },
+      { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro (Глубокая)' },
+      { id: 'gemini-2.0-flash', label: 'gemini-2.0-flash' },
+    ],
+  },
+  openrouter: {
+    llmBaseUrl: 'https://openrouter.ai/api/v1',
+    llmModel: 'deepseek/deepseek-chat-v3-0324:free',
+    models: [
+      { id: 'deepseek/deepseek-chat-v3-0324:free', label: 'DeepSeek V3 (Бесплатно на OpenRouter ★)' },
+      { id: 'deepseek/deepseek-r1:free', label: 'DeepSeek R1 DeepThink (Бесплатно)' },
+      { id: 'google/gemini-2.5-flash', label: 'Google Gemini 2.5 Flash' },
+      { id: 'openai/gpt-4.1-mini', label: 'OpenAI GPT-4.1 Mini' },
+      { id: 'anthropic/claude-3.7-sonnet', label: 'Anthropic Claude 3.7 Sonnet' },
+    ],
+  },
+  ollama: {
+    llmBaseUrl: 'http://localhost:11434/v1',
+    llmModel: 'qwen2.5:7b',
+    models: [
+      { id: 'qwen2.5:7b', label: 'qwen2.5:7b (Рекомендуется для 8 ГБ VRAM)' },
+      { id: 'qwen2.5:14b', label: 'qwen2.5:14b (Высокое качество)' },
+      { id: 'llama3.1:8b', label: 'llama3.1:8b' },
+      { id: 'gemma3:12b', label: 'gemma3:12b' },
+      { id: 'deepseek-r1:8b', label: 'deepseek-r1:8b (DeepThink локально)' },
+    ],
+  },
 };
 
 const state = {
   files: [],
   current: null,
   page: 0,
+  tab: 'all',
   mode: 'manual',
   settings: {},
   running: false,
@@ -253,6 +311,29 @@ async function openFiles(paths, isRestore = false) {
 }
 
 // ------------------------------------------------------------- sidebar
+function fileLabel(f) {
+  if (!f.rel.includes('/')) return f.rel;
+  const parts = f.rel.split('/');
+  const name = parts.pop();
+  if (f.type === 'puffish') return `${parts[parts.length - 1] || ''} / ${name}`;
+  if (f.type === 'lang-json' || f.type === 'lang') return parts[parts.length - 2] || name;
+  return name;
+}
+
+function setTab(tab) {
+  state.tab = tab || 'all';
+  $$('#sideTabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+  if (state.current && state.tab !== 'all' && fileTab(state.current) !== state.tab) {
+    const firstInTab = state.files.find((f) => fileTab(f) === state.tab);
+    if (firstInTab) {
+      state.current = firstInTab;
+      state.page = 0;
+      renderRows();
+    }
+  }
+  renderSidebar();
+}
+
 function renderSidebar() {
   const q = $('#fileSearch').value.trim().toLowerCase();
   const list = $('#fileList');
@@ -260,12 +341,15 @@ function renderSidebar() {
   let lastGroup = null;
   let totalDone = 0;
   let total = 0;
+  let dlgRows = 0;
   for (const f of state.files) {
     const st = fileStats(f);
     totalDone += st.done;
     total += st.total;
+    if (fileTab(f) === 'dialogues') dlgRows += st.total;
+    if (state.tab !== 'all' && fileTab(f) !== state.tab) continue;
     if (q && !f.rel.toLowerCase().includes(q)) continue;
-    const g = TYPE_GROUP[f.type];
+    const g = TYPE_GROUP[f.type] || 'Прочее';
     if (g !== lastGroup) {
       const gh = document.createElement('div');
       gh.className = 'file-group';
@@ -273,10 +357,7 @@ function renderSidebar() {
       list.appendChild(gh);
       lastGroup = g;
     }
-    const parts = f.rel.split('/');
-    const name = parts.pop();
-    const sub = parts.slice(-2).join('/');
-    const label = f.type === 'lang-json' || f.type === 'lang' ? (parts[parts.length - 2] || name) : name;
+    const label = fileLabel(f);
     const el = document.createElement('div');
     el.className = 'file-item' + (f === state.current ? ' active' : '') + (st.done === st.total && st.total > 0 ? ' complete' : '');
     el.title = f.rel;
@@ -296,6 +377,14 @@ function renderSidebar() {
     };
     f._el = el;
     list.appendChild(el);
+  }
+  if (!list.children.length && state.files.length) {
+    list.innerHTML = '<div class="empty" style="padding:18px 8px;text-align:center"><p class="muted" style="font-size:12px">В этой вкладке нет файлов.</p></div>';
+  }
+  const badge = $('#dlgBadge');
+  if (badge) {
+    badge.textContent = dlgRows;
+    badge.classList.toggle('hidden', dlgRows === 0);
   }
   $('#totalBar').style.width = total ? `${(totalDone / total) * 100}%` : '0';
   $('#totalText').textContent = `${totalDone} / ${total}`;
@@ -517,7 +606,10 @@ async function runAuto() {
   }
   const scope = document.querySelector('input[name="scope"]:checked').value;
   const onlyTodo = $('#autoOnlyTodo').checked;
-  const files = scope === 'all' ? state.files : [state.current];
+  let files;
+  if (scope === 'all') files = state.files;
+  else if (scope === 'tab') files = state.tab === 'all' ? state.files : state.files.filter((f) => fileTab(f) === state.tab);
+  else files = state.current ? [state.current] : [];
   const items = [];
   for (const f of files) for (const r of f.rows) if (!onlyTodo || !r.translation) items.push({ r, f });
   if (!items.length) return toast('Всё уже переведено.', 'ok');
@@ -563,11 +655,13 @@ function buildJobs() {
 async function applyToPack() {
   const jobs = buildJobs();
   if (!jobs.length) return toast('Нет переведённых строк для сохранения.', 'warn');
-  const inPlace = jobs.filter((j) => j.type === 'ftb' || j.type === 'bq').length;
+  const inPlace = jobs.filter((j) => j.type === 'ftb' || j.type === 'bq' || j.type === 'puffish').length;
+  const hasDlgOrMod = jobs.some((j) => j.type === 'dialogue-lang' || j.type === 'dialogue-json' || j.abs.includes('.mctranslate'));
   const ok = await confirmBox(
     'Применить перевод в сборку',
     `<p>Будет записано файлов: <b>${jobs.length}</b>.</p>
-     ${inPlace ? `<p>⚠ <b>${inPlace}</b> файл(ов) квестов будут изменены напрямую (оригиналы сохранятся в <code>.mctranslate/backups</code>).</p>` : ''}
+     ${inPlace ? `<p>⚠ <b>${inPlace}</b> файл(ов) квестов/талантов будут изменены напрямую (оригиналы сохранятся в <code>.mctranslate/backups</code>).</p>` : ''}
+     ${hasDlgOrMod ? `<p>💬 Диалоги и строки модов будут автоматически упакованы в ресурспак <code>MCTranslate_RU</code> (и датапак <code>MCTranslate_RU_Data</code>).</p>` : ''}
      <p>Для языковых файлов будет создан/обновлён файл <code>${esc(state.settings.targetLang)}</code>.</p>`,
     'Применить'
   );
@@ -601,6 +695,66 @@ function reportWrite(res, dir) {
 // ------------------------------------------------------------- settings
 let currentLlmParamMode = 'auto';
 
+function detectPresetKey(baseUrl) {
+  const norm = String(baseUrl || '').trim().replace(/\/+$/, '').toLowerCase();
+  for (const [key, p] of Object.entries(PRESETS)) {
+    if (p.llmBaseUrl.replace(/\/+$/, '').toLowerCase() === norm) return key;
+  }
+  return null;
+}
+
+function populateModelSelect(baseUrl, currentModel, extraModels = []) {
+  const presetKey = detectPresetKey(baseUrl);
+  $$('[data-preset]').forEach((b) => b.classList.toggle('active', b.dataset.preset === presetKey));
+
+  const presetModels = presetKey ? PRESETS[presetKey].models : [];
+  const seen = new Set();
+  const options = [];
+
+  for (const m of presetModels) {
+    seen.add(m.id);
+    options.push({ id: m.id, label: m.label });
+  }
+  for (const id of extraModels) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      options.push({ id, label: id });
+    }
+  }
+  if (currentModel && !seen.has(currentModel)) {
+    seen.add(currentModel);
+    options.unshift({ id: currentModel, label: `${currentModel} (текущая)` });
+  }
+
+  const sel = $('#sLlmModelSelect');
+  sel.innerHTML = '';
+  for (const opt of options) {
+    const o = document.createElement('option');
+    o.value = opt.id;
+    o.textContent = opt.label;
+    sel.appendChild(o);
+  }
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.textContent = '✏ Ввести название модели вручную…';
+  sel.appendChild(customOpt);
+
+  if (currentModel && seen.has(currentModel)) {
+    sel.value = currentModel;
+    $('#sLlmModel').value = currentModel;
+    $('#sLlmModel').classList.add('hidden');
+  } else {
+    sel.value = '__custom__';
+    $('#sLlmModel').value = currentModel || '';
+    $('#sLlmModel').classList.remove('hidden');
+  }
+}
+
+function getSelectedModelId() {
+  const sel = $('#sLlmModelSelect').value;
+  return sel === '__custom__' ? $('#sLlmModel').value.trim() : sel;
+}
+
 function setLlmParamMode(pmode) {
   currentLlmParamMode = pmode === 'custom' ? 'custom' : 'auto';
   $$('#llmParamSeg button').forEach((b) => b.classList.toggle('active', b.dataset.pmode === currentLlmParamMode));
@@ -616,8 +770,10 @@ function fillSettingsForm() {
   $('#sDeeplApiUrl').value = s.deeplApiUrl || '';
   $('#sRequestDelayMs').value = s.requestDelayMs ?? 300;
   $('#sMymemoryEmail').value = s.mymemoryEmail || '';
-  $('#sLlmBaseUrl').value = s.llmBaseUrl || 'https://api.deepseek.com/v1';
-  $('#sLlmModel').value = s.llmModel || 'deepseek-chat';
+  const baseUrl = s.llmBaseUrl || 'https://api.deepseek.com/v1';
+  const model = s.llmModel || 'deepseek-chat';
+  $('#sLlmBaseUrl').value = baseUrl;
+  populateModelSelect(baseUrl, model);
   $('#sLlmApiKey').value = s.llmApiKey || '';
   $('#sLlmDeepThink').checked = Boolean(s.llmDeepThink);
   $('#sLlmStyle').value = s.llmStyle || 'balanced';
@@ -642,7 +798,7 @@ async function saveSettingsForm() {
     requestDelayMs: Math.max(0, Number($('#sRequestDelayMs').value) || 0),
     mymemoryEmail: $('#sMymemoryEmail').value.trim(),
     llmBaseUrl: $('#sLlmBaseUrl').value.trim(),
-    llmModel: $('#sLlmModel').value.trim(),
+    llmModel: getSelectedModelId() || 'deepseek-chat',
     llmApiKey: $('#sLlmApiKey').value.trim(),
     llmDeepThink: $('#sLlmDeepThink').checked,
     llmStyle: $('#sLlmStyle').value,
@@ -701,17 +857,46 @@ async function init() {
   $$('[data-preset]').forEach((b) => (b.onclick = () => {
     const p = PRESETS[b.dataset.preset];
     $('#sLlmBaseUrl').value = p.llmBaseUrl;
-    if (b.dataset.preset === 'deepseek' && $('#sLlmDeepThink').checked) {
-      $('#sLlmModel').value = 'deepseek-reasoner';
-    } else {
-      $('#sLlmModel').value = p.llmModel;
-    }
+    const defModel = (b.dataset.preset === 'deepseek' && $('#sLlmDeepThink').checked) ? 'deepseek-reasoner' : p.llmModel;
+    populateModelSelect(p.llmBaseUrl, defModel);
   }));
+  $('#sLlmBaseUrl').oninput = () => {
+    populateModelSelect($('#sLlmBaseUrl').value, getSelectedModelId());
+  };
+  $('#sLlmModelSelect').onchange = (e) => {
+    if (e.target.value === '__custom__') {
+      $('#sLlmModel').classList.remove('hidden');
+      $('#sLlmModel').focus();
+    } else {
+      $('#sLlmModel').value = e.target.value;
+      $('#sLlmModel').classList.add('hidden');
+    }
+  };
+  $('#btnFetchModels').onclick = async () => {
+    const btn = $('#btnFetchModels');
+    btn.disabled = true;
+    btn.textContent = 'Загрузка…';
+    try {
+      const res = await api.fetchLlmModels({
+        baseUrl: $('#sLlmBaseUrl').value.trim(),
+        apiKey: $('#sLlmApiKey').value.trim(),
+      });
+      if (!res.ok) throw new Error(res.error);
+      if (!res.models.length) throw new Error('Сервер вернул пустой список моделей');
+      populateModelSelect($('#sLlmBaseUrl').value.trim(), getSelectedModelId() || res.models[0], res.models);
+      toast(`Загружено моделей с сервера: ${res.models.length}`, 'ok', 3000);
+    } catch (err) {
+      toast('Не удалось получить список моделей: ' + err.message, 'err', 6000);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '↻ С сервера';
+    }
+  };
   $$('#llmParamSeg button').forEach((b) => (b.onclick = () => setLlmParamMode(b.dataset.pmode)));
   $('#sLlmDeepThink').onchange = (e) => {
-    const m = $('#sLlmModel').value.trim();
-    if (e.target.checked && m === 'deepseek-chat') $('#sLlmModel').value = 'deepseek-reasoner';
-    if (!e.target.checked && m === 'deepseek-reasoner') $('#sLlmModel').value = 'deepseek-chat';
+    const m = getSelectedModelId();
+    if (e.target.checked && m === 'deepseek-chat') populateModelSelect($('#sLlmBaseUrl').value, 'deepseek-reasoner');
+    if (!e.target.checked && m === 'deepseek-reasoner') populateModelSelect($('#sLlmBaseUrl').value, 'deepseek-chat');
   };
 
   // Floating tooltip for (i) badges so they are never clipped by modal scroll/borders
@@ -745,6 +930,7 @@ async function init() {
     }
   };
   $$('#modeSeg button').forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+  $$('#sideTabs button').forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
   $$('input[name="scope"]').forEach((r) => (r.onchange = () => saveSessionState()));
   $('#btnAutoStart').onclick = runAuto;
   $('#btnAutoStop').onclick = () => { state.cancel = true; $('#autoText').textContent = 'Остановка…'; };
