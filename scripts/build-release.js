@@ -15,7 +15,8 @@ const outDir = path.join(relRoot, 'MCTranslate');
 const zipPath = path.join(relRoot, 'MCTranslate.zip');
 
 if (!fs.existsSync(electronDist)) {
-  throw new Error('Electron dist not found. Run `npm install` first.');
+  console.log('Downloading Electron binary...');
+  execSync(`node "${path.join(root, 'node_modules', 'electron', 'install.js')}"`, { stdio: 'inherit' });
 }
 
 fs.rmSync(relRoot, { recursive: true, force: true });
