@@ -454,7 +454,12 @@ function renderPager(pages) {
 // ------------------------------------------------------------- translation
 function getEngineBatchSize() {
   const eng = state.settings.engine;
-  if (eng === 'llm') return Math.max(1, Number(state.settings.llmBatchSize) || 25);
+  if (eng === 'llm') {
+    if ((state.settings.llmParamMode || 'auto') === 'auto') {
+      return state.settings.llmDeepThink ? 15 : 25;
+    }
+    return Math.max(1, Number(state.settings.llmBatchSize) || 25);
+  }
   if (eng === 'deepl') return 20;
   if (eng === 'mymemory') return 5;
   return 35;
@@ -594,6 +599,15 @@ function reportWrite(res, dir) {
 }
 
 // ------------------------------------------------------------- settings
+let currentLlmParamMode = 'auto';
+
+function setLlmParamMode(pmode) {
+  currentLlmParamMode = pmode === 'custom' ? 'custom' : 'auto';
+  $$('#llmParamSeg button').forEach((b) => b.classList.toggle('active', b.dataset.pmode === currentLlmParamMode));
+  $('#llmAutoHint').classList.toggle('hidden', currentLlmParamMode === 'custom');
+  $('#llmCustomParams').classList.toggle('hidden', currentLlmParamMode !== 'custom');
+}
+
 function fillSettingsForm() {
   const s = state.settings;
   $('#sSourceLang').value = s.sourceLang;
@@ -602,11 +616,19 @@ function fillSettingsForm() {
   $('#sDeeplApiUrl').value = s.deeplApiUrl || '';
   $('#sRequestDelayMs').value = s.requestDelayMs ?? 300;
   $('#sMymemoryEmail').value = s.mymemoryEmail || '';
-  $('#sLlmBaseUrl').value = s.llmBaseUrl;
-  $('#sLlmModel').value = s.llmModel;
-  $('#sLlmApiKey').value = s.llmApiKey;
-  $('#sLlmBatchSize').value = s.llmBatchSize;
-  $('#sLlmExtraPrompt').value = s.llmExtraPrompt;
+  $('#sLlmBaseUrl').value = s.llmBaseUrl || 'https://api.deepseek.com/v1';
+  $('#sLlmModel').value = s.llmModel || 'deepseek-chat';
+  $('#sLlmApiKey').value = s.llmApiKey || '';
+  $('#sLlmDeepThink').checked = Boolean(s.llmDeepThink);
+  $('#sLlmStyle').value = s.llmStyle || 'balanced';
+  $('#sLlmKeepOriginalNames').value = s.llmKeepOriginalNames || 'mods';
+  setLlmParamMode(s.llmParamMode || 'auto');
+  $('#sLlmTemperature').value = s.llmTemperature ?? 0.2;
+  $('#sLlmTopP').value = s.llmTopP ?? 0.95;
+  $('#sLlmMaxTokens').value = s.llmMaxTokens ?? 4096;
+  $('#sLlmReasoningEffort').value = s.llmReasoningEffort || 'auto';
+  $('#sLlmBatchSize').value = s.llmBatchSize ?? 25;
+  $('#sLlmExtraPrompt').value = s.llmExtraPrompt || '';
   $('#sGlossary').value = s.glossary;
 }
 
@@ -622,7 +644,15 @@ async function saveSettingsForm() {
     llmBaseUrl: $('#sLlmBaseUrl').value.trim(),
     llmModel: $('#sLlmModel').value.trim(),
     llmApiKey: $('#sLlmApiKey').value.trim(),
-    llmBatchSize: Number($('#sLlmBatchSize').value) || 25,
+    llmDeepThink: $('#sLlmDeepThink').checked,
+    llmStyle: $('#sLlmStyle').value,
+    llmKeepOriginalNames: $('#sLlmKeepOriginalNames').value,
+    llmParamMode: currentLlmParamMode,
+    llmTemperature: Math.max(0, Math.min(1.5, Number($('#sLlmTemperature').value ?? 0.2))),
+    llmTopP: Math.max(0.1, Math.min(1, Number($('#sLlmTopP').value ?? 0.95))),
+    llmMaxTokens: Math.max(256, Number($('#sLlmMaxTokens').value) || 4096),
+    llmReasoningEffort: $('#sLlmReasoningEffort').value,
+    llmBatchSize: Math.max(1, Number($('#sLlmBatchSize').value) || 25),
     llmExtraPrompt: $('#sLlmExtraPrompt').value.trim(),
     glossary: $('#sGlossary').value,
   });
@@ -671,8 +701,41 @@ async function init() {
   $$('[data-preset]').forEach((b) => (b.onclick = () => {
     const p = PRESETS[b.dataset.preset];
     $('#sLlmBaseUrl').value = p.llmBaseUrl;
-    $('#sLlmModel').value = p.llmModel;
+    if (b.dataset.preset === 'deepseek' && $('#sLlmDeepThink').checked) {
+      $('#sLlmModel').value = 'deepseek-reasoner';
+    } else {
+      $('#sLlmModel').value = p.llmModel;
+    }
   }));
+  $$('#llmParamSeg button').forEach((b) => (b.onclick = () => setLlmParamMode(b.dataset.pmode)));
+  $('#sLlmDeepThink').onchange = (e) => {
+    const m = $('#sLlmModel').value.trim();
+    if (e.target.checked && m === 'deepseek-chat') $('#sLlmModel').value = 'deepseek-reasoner';
+    if (!e.target.checked && m === 'deepseek-reasoner') $('#sLlmModel').value = 'deepseek-chat';
+  };
+
+  // Floating tooltip for (i) badges so they are never clipped by modal scroll/borders
+  const tipEl = document.createElement('div');
+  tipEl.className = 'floating-tip';
+  document.body.appendChild(tipEl);
+  document.addEventListener('mouseover', (e) => {
+    const t = e.target.closest('.info-tip');
+    if (!t || !t.dataset.tip) {
+      tipEl.classList.remove('visible');
+      return;
+    }
+    tipEl.textContent = t.dataset.tip;
+    tipEl.classList.add('visible');
+    const r = t.getBoundingClientRect();
+    const tw = tipEl.offsetWidth || 310;
+    const th = tipEl.offsetHeight || 60;
+    let left = r.left + r.width / 2 - tw / 2;
+    left = Math.max(12, Math.min(window.innerWidth - tw - 12, left));
+    let top = r.top - th - 8;
+    if (top < 12) top = r.bottom + 8;
+    tipEl.style.left = `${Math.round(left)}px`;
+    tipEl.style.top = `${Math.round(top)}px`;
+  });
   $('#engineSelect').onchange = async (e) => {
     state.settings = await api.setSettings({ engine: e.target.value });
     if (e.target.value === 'llm' && !state.settings.llmApiKey) {
