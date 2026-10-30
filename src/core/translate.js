@@ -377,47 +377,90 @@ async function translateMyMemory(texts, s) {
 // ------------------------------------------------------------------ LLM (OpenAI-compatible)
 function buildSystemPrompt(s, glossary) {
   const lang = { ru_ru: 'Russian', uk_ua: 'Ukrainian', be_by: 'Belarusian', kk_kz: 'Kazakh', de_de: 'German', es_es: 'Spanish', fr_fr: 'French', pl_pl: 'Polish', pt_br: 'Brazilian Portuguese', zh_cn: 'Simplified Chinese', ja_jp: 'Japanese' }[s.targetLang] || s.targetLang;
+
+  const styleMap = {
+    balanced: 'Keep a natural gaming tone: preserve the author\'s humor, casual remarks, and lore while keeping quest instructions clear and accurate.',
+    literal: 'Use a strict, concise technical style: focus on maximum accuracy of instructions, crafting steps, and mechanics without literary embellishment.',
+    creative: 'Use an expressive, atmospheric literary style suitable for RPG and story-driven quests while keeping mechanics accurate.',
+  };
+  const namesMap = {
+    mods: 'Use the official translation for vanilla Minecraft items/blocks/mobs. Mod names and mod-specific proper nouns should stay in English if there is no established translation.',
+    brackets: 'When translating specific modded item, block, or machine names inside quest descriptions, keep the original English name in parentheses on first mention, e.g. "Дробитель (Crusher)", so the player can find it in JEI.',
+    translate_all: 'Translate all item, block, machine, and quest names into the target language without leaving English words.',
+  };
+
   let p = `You are a professional localizer of Minecraft modpacks (quests, item tooltips, guide books).
 Translate every input string into ${lang}.
 Rules:
-- Use the official ${lang} Minecraft terminology for vanilla items/blocks/mobs (e.g. Hopper, Chest, Redstone in their official translations).
-- Mod names, mod-specific brand names and proper nouns may stay in English if there is no established translation.
+- ${namesMap[s.llmKeepOriginalNames] || namesMap.mods}
+- ${styleMap[s.llmStyle] || styleMap.balanced}
 - Tokens like {0}, {1} are placeholders for formatting codes – keep EVERY token exactly as is and in a sensible position.
-- Keep line breaks, keep the meaning, tone and style (quests are often humorous / casual).
-- Do not add explanations or notes.
-Input: a JSON array of strings. Output: ONLY a JSON array of translated strings of the same length and order.`;
+- Keep line breaks. Do not add explanations, markdown wrappers, or notes.
+Input: a JSON array of strings. Output: ONLY a valid JSON array of translated strings of the exact same length and order.`;
   if (glossary.length) p += `\nGlossary (always use these translations):\n` + glossary.map((g) => `${g.src} = ${g.dst}`).join('\n');
   if (s.llmExtraPrompt) p += `\nAdditional instructions: ${s.llmExtraPrompt}`;
   return p;
 }
 
 function extractJsonArray(content) {
-  const c = content.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+  // Strip <think>...</think> blocks if returned by local reasoning models (e.g. DeepSeek R1 in Ollama)
+  const cleaned = String(content || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const c = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
   const a = c.indexOf('[');
   const b = c.lastIndexOf(']');
   if (a < 0 || b < a) throw new Error('Модель вернула не JSON-массив');
   return JSON.parse(c.slice(a, b + 1));
 }
 
+function resolveLlmModel(s) {
+  let model = (s.llmModel || 'deepseek-chat').trim();
+  if (s.llmDeepThink) {
+    if (model === 'deepseek-chat') return 'deepseek-reasoner';
+    if (model === 'gpt-4o-mini') return 'o3-mini';
+    if (model === 'gemini-2.5-flash') return 'gemini-2.5-pro';
+  } else if (model === 'deepseek-reasoner') {
+    return 'deepseek-chat';
+  }
+  return model;
+}
+
 async function translateLLM(texts, s) {
   const glossary = parseGlossary(s.glossary);
   const prot = texts.map((t) => protect(t, glossary, false));
-  const base = (s.llmBaseUrl || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const base = (s.llmBaseUrl || 'https://api.deepseek.com/v1').replace(/\/+$/, '');
+  const model = resolveLlmModel(s);
+  const isAuto = (s.llmParamMode || 'auto') === 'auto';
+  const isReasoner = Boolean(s.llmDeepThink) || /reasoner|^o[134]|r1/i.test(model);
+
   const body = {
-    model: s.llmModel || 'gpt-4o-mini',
-    temperature: 0.2,
+    model,
     messages: [
       { role: 'system', content: buildSystemPrompt(s, glossary) },
       { role: 'user', content: JSON.stringify(prot.map((p) => p.text)) },
     ],
   };
+
+  // Reasoner models (like deepseek-reasoner / o3-mini) either ignore or reject temperature/top_p
+  if (!isReasoner) {
+    body.temperature = isAuto ? 0.2 : Math.max(0, Math.min(1.5, Number(s.llmTemperature ?? 0.2)));
+    if (!isAuto && s.llmTopP !== undefined) {
+      body.top_p = Math.max(0.1, Math.min(1.0, Number(s.llmTopP ?? 0.95)));
+    }
+  } else if (!isAuto && s.llmReasoningEffort && s.llmReasoningEffort !== 'auto' && !/deepseek-reasoner/i.test(model)) {
+    body.reasoning_effort = s.llmReasoningEffort;
+  }
+
+  const maxTokens = isAuto ? (isReasoner ? 8192 : 4096) : Math.max(256, Number(s.llmMaxTokens) || 4096);
+  body.max_tokens = maxTokens;
+
   const headers = { 'Content-Type': 'application/json' };
   if (s.llmApiKey) headers.Authorization = `Bearer ${s.llmApiKey}`;
 
   let lastErr;
+  const timeoutMs = isReasoner ? 300000 : 180000;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const res = await fetchWithTimeout(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) }, 180000);
+      const res = await fetchWithTimeout(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) }, timeoutMs);
       if (res.status === 429 || res.status >= 500) {
         lastErr = new Error(`LLM: HTTP ${res.status}`);
         await sleep(3000 * (attempt + 1));
