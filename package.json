@@ -5,7 +5,8 @@
   "description": "Переводчик квестов и lang-файлов Minecraft-сборок (FTB Quests, Better Questing, KubeJS)",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "node scripts/build-release.js"
   },
   "author": "MCTranslate",
   "license": "MIT",
