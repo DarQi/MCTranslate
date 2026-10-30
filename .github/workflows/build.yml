@@ -1,0 +1,51 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      update_release:
+        description: 'Обновить MCTranslate.zip в последнем Release (v1.0.0)'
+        required: false
+        default: true
+        type: boolean
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build stripped release and MCTranslate.zip
+        run: npm run dist
+
+      - name: Upload artifact to Actions run
+        uses: actions/upload-artifact@v4
+        with:
+          name: MCTranslate-win64
+          path: release/MCTranslate.zip
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.update_release == true)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.0' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'MCTranslate v1.0.0' }}
+          files: release/MCTranslate.zip
+          overwrite: true
