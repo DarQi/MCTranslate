@@ -392,9 +392,9 @@ html[data-theme="light"] .c-orig.has-mc {
   z-index: 50;
 }
 .modal-box {
-  width: 660px;
-  max-width: 94vw;
-  max-height: 88vh;
+  width: 860px;
+  max-width: 95vw;
+  max-height: 90vh;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -403,16 +403,102 @@ html[data-theme="light"] .c-orig.has-mc {
   box-shadow: 0 20px 50px var(--shadow);
 }
 .modal-box.small { width: 480px; }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--border); }
 .modal-head h3 { margin: 0; font-size: 15px; }
-.modal-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.modal-body h4 { margin: 8px 0 0; font-size: 13px; color: var(--text); }
+.modal-body { padding: 16px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.modal-body > * { flex-shrink: 0; }
+.modal-body h4 { margin: 8px 0 0; font-size: 13.5px; color: var(--text); }
 .modal-body p { margin: 0; }
-.modal-body label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12.5px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--border); background: var(--bg2); border-radius: 0 0 10px 10px; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.modal-body label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12.5px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px; border-top: 1px solid var(--border); background: var(--bg2); border-radius: 0 0 10px 10px; flex-shrink: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .presets { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
-textarea.input { resize: vertical; }
+textarea.input { resize: vertical; width: 100%; min-height: 130px; line-height: 1.45; }
+
+.lbl-row { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg3);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-style: italic;
+  font-family: Georgia, serif;
+  cursor: help;
+  user-select: none;
+  flex-shrink: 0;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.info-tip:hover { color: #fff; background: var(--accent); border-color: var(--accent); }
+
+.floating-tip {
+  position: fixed;
+  z-index: 9999;
+  width: 310px;
+  max-width: 90vw;
+  padding: 9px 12px;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  font: 400 12.5px/1.45 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 10px 30px var(--shadow);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.floating-tip.visible { opacity: 1; }
+
+.rec-badge, .rec-inline {
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--green) 14%, transparent);
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+  font-weight: 500;
+}
+.rec-inline { padding: 0 6px; font-size: 10.5px; }
+
+.ai-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ai-box-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ai-deepthink { color: var(--text); font-weight: 500; }
+
+.param-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.auto-hint {
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
 
 /* ---------- Toasts ---------- */
 .toasts { position: fixed; right: 16px; bottom: 16px; display: flex; flex-direction: column; gap: 8px; z-index: 100; max-width: 420px; }
